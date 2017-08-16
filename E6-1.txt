@@ -1,0 +1,90 @@
+「前年との比較結果を一覧表示する」(p.107)では、
+企業の年商が前年に比べて増えたかどうかを比較しました。
+実は、あのクエリは、もう少しパフォーマンスを改善できる余地があります。
+三つのWHEN句で同じサブクエリを3回実行していますが、これは無駄です。
+一つにまとめる工夫をして見てください。
+
+(p.107)のクエリ
+
+SELECT
+	S1.year,
+	S1.sale,
+	CASE
+		WHEN sale = (
+			SELECT
+				sale
+			FROM
+				Sales S2
+			WHERE
+				S2.year = S1.year - 1
+		) THEN '→'
+		WHEN sale > (
+			SELECT
+				sale
+			FROM
+				Sales S2
+			WHERE
+				S2.year = S1.year - 1
+		) THEN '↑'
+		WHEN sale < (
+			SELECT
+				sale
+			FROM
+				Sales S2
+			WHERE
+				S2.year = S1.year - 1
+		) THEN '↓'
+		ELSE '-'
+		END AS var
+FROM
+	Sales S1
+ORDER BY
+	year
+;
+
+
+解答：
+
+	SELECT                                               -- サブクエリを実行した結果をもとにデータを抽出するため以下カラムを設定する
+		CompareSales.year,                               -- 年カラムを設定する
+		CompareSales.sale,                               -- 売上カラムを設定する
+		CASE                                             -- 前年度比の結果を出力するカラムを設定する
+			WHEN CompareSales.sale = CompareSales.var    -- 結果がならむことを示す表示を設定する
+			THEN '→'                                     -- 表示内容を設定する
+			WHEN CompareSales.sale > CompareSales.var    -- 結果がプラスであることを示す表示を設定する
+			THEN '↑'                                     -- 表示内容を設定する
+			WHEN CompareSales.sale < CompareSales.var    -- 結果がマイナスであることを示す表示を設定する
+			THEN '↓'                                     -- 表示内容を設定する
+			ELSE '-'                                     -- 比較できないデータをしめす表示を設定する
+		END AS var                                       -- 上記内容でカラムを設定する
+	FROM                                                 -- 以下サブクエリの結果よりデータを抽出する
+		(
+			SELECT                                       -- 前年度との売上比較を行うデータ取得のために以下カラムを設定する
+				S1.year AS year,                         -- 年カラムを設定する
+				S1.sale AS sale,                         -- 売上カラムを設定する
+				(                                        -- 前年度の売上を表示するフィールドを取得するためのカラムを設定する
+					SELECT                               -- 前年度の売上を取得するため以下カラムを設定する
+						sale                             -- 売上カラムを設定する
+					FROM                                 -- 今年度の売上と比較するため同じテーブルとの自己結合とする
+						Sales S2                         -- 売上テーブルを今年度データを表示するために設定する
+					WHERE                                -- 今年度と前年度を同じレコードで表示するため以下条件を設定する
+						S2.year = S1.year - 1            -- 今年度とその一つ前の年の一致で結合する
+				) AS var                                 -- 上記条件で取得できるカラムを設定する
+			FROM                                         -- 今年度の売上と比較するため同じテーブルとの自己結合とする
+				Sales S1                                 -- 売上テーブルを前年度データを表示するために設定する
+		) AS CompareSales                                -- 売上比較テーブルとして設定する
+	;
+
++------+------+------+
+| year | sale | var  |
++------+------+------+
+| 1990 |   50 | -    |
+| 1991 |   51 | ↑    |
+| 1992 |   52 | ↑    |
+| 1993 |   52 | →    |
+| 1994 |   50 | ↓    |
+| 1995 |   50 | →    |
+| 1996 |   49 | ↓    |
+| 1997 |   55 | ↑    |
++------+------+------+
+
