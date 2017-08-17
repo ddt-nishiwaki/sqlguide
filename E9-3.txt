@@ -1,0 +1,62 @@
+引き続き、述語論理を集合論に変換する練習です。「最大何人まで座れますか？」
+で NOT EXISTS をつかって元エタシーケンスを全て保持するビューのクエリを、
+HAVING句で書き換えてください。基本的には演習問題２と同じ考え方でいいのですが、
+特性関数の条件がちょっと複雑になります。
+
+/* 第1段階：すべてのシーケンスを保持するビューを作る (p.169) */
+CREATE VIEW Sequences (start_seat, end_seat, seat_cnt) AS
+SELECT S1.seat  AS start_seat,
+       S2.seat  AS end_seat,
+       S2.seat - S1.seat + 1 AS seat_cnt
+  FROM Seats3 S1, Seats3 S2
+ WHERE S1.seat <= S2.seat  /* ステップ1：始点と終点の組み合わせを作る */
+   AND NOT EXISTS   /* ステップ2：シーケンス内のすべての行が満たすべき条件を記述する */
+       (SELECT *
+          FROM Seats3 S3
+         WHERE (     S3.seat BETWEEN S1.seat AND S2.seat
+                 AND S3.status <> '空')                         /* 条件1の否定 */
+            OR  (S3.seat = S2.seat + 1 AND S3.status = '空' )    /* 条件2の否定 */
+            OR  (S3.seat = S1.seat - 1 AND S3.status = '空' ));  /* 条件3の否定 */
+
+解答：
+
+SELECT                                                           -- 空席の連続が何人分あるか調べる
+    S1.seat AS start_seat,                                       -- 空席の始点を設定する
+    S2.seat  AS end_seat,                                        -- 空席の終点を設定する
+    S2.seat - S1.seat + 1 AS seat_cnt                            -- 空席の連続ごとの座席数を設定する
+FROM                                                             -- データを多次元的に調べる
+    Seats3 S1,                                                   -- 座席範囲の始点データを持つためのテーブルを定義する
+    Seats3 S2,                                                   -- 座席範囲の終点データを持つためのテーブルを定義する
+    Seats3 S3                                                    -- 座席範囲の席数データを持つためのテーブルを定義する
+WHERE                                                            -- 始点と終点の組み合わせを作る条件を指定する
+    S1.seat <= S2.seat                                           -- 始点は常に終点以下という条件を指定する
+AND                                                              -- かつ
+    S3.seat BETWEEN S1.seat - 1 AND S2.seat + 1                  -- 始点の手前と終点の後の座席を調べる為の範囲設定を行う
+GROUP BY                                                         -- 空席情報の集合をとるために以下データをまとめる
+    S1.seat, S2.seat                                             -- 始点と終点情報についてまとめる
+HAVING                                                           -- 空席の連続ごとの空席数を特定する
+    COUNT(*) = SUM(                                              -- 以下条件でカウントする
+        CASE                                                     -- 複数条件を指定する
+            WHEN                                                 -- 条件範囲の設定とステータスチェックを行う
+                S3.seat BETWEEN S1.seat AND S2.seat              -- 始点、終点間の座席であり
+            AND                                                  -- かつ
+                S3.status = '空'                                 -- 空席であれば
+                THEN 1                                           -- カウントする
+            WHEN                                                 -- 空席の連続が範囲外にも続いていないか調べる
+                S3.seat = S2.seat + 1 AND S3.status = '占'       -- 終点の後ろの席が空いていなかったら
+                THEN 1                                           -- カウントする
+            WHEN                                                 -- 空席の連続が範囲外にも続いていないか調べる
+                S3.seat = S1.seat - 1 AND S3.status = '占'       -- 始点の前の席が空いていなかったら
+                THEN 1                                           -- カウントする
+            ELSE 0                                               -- 上記条件に満たない場合はカウントしない
+        END                                                      -- 上記条件で各空席の連続の数をカウントする
+    )
+;
+
++------------+----------+----------+
+| start_seat | end_seat | seat_cnt |
++------------+----------+----------+
+|          2 |        5 |        4 |
+|          7 |        7 |        1 |
+|          9 |       10 |        2 |
++------------+----------+----------+
